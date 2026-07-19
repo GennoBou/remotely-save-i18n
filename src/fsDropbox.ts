@@ -187,17 +187,21 @@ async function retryReq<T>(
         // then the err is not DropboxResponseError
         throw err;
       }
-      if (err.status !== 429) {
-        // then the err is not "too many requests", give up
+      // 429 is "too many requests"; 409 with too_many_write_operations is
+      // namespace write contention, which is equally transient and retryable
+      const isWriteContention =
+        err.status === 409 &&
+        JSON.stringify(err.error ?? "").includes("too_many_write_operations");
+      if (err.status !== 429 && !isWriteContention) {
         throw err;
       }
 
       if (idx === waitSeconds.length - 1) {
         // the last retry also failed, give up
         throw new Error(
-          `${
-            extraHint === "" ? "" : extraHint + ": "
-          }"429 too many requests", after retrying for ${
+          `${extraHint === "" ? "" : extraHint + ": "}"${
+            err.status
+          } too many requests / write operations", after retrying for ${
             idx + 1
           } times still failed.`
         );
@@ -205,7 +209,7 @@ async function retryReq<T>(
 
       const headers = headersToRecord(err.headers);
       const svrSec =
-        err.error.error.retry_after ||
+        err.error?.error?.retry_after ||
         Number.parseInt(headers["retry-after"] || "1") ||
         1;
       const fallbackSec = waitSeconds[idx];
@@ -710,8 +714,11 @@ export class FakeFsDropbox extends FakeFs {
         `${key1}=>${key2}` // just a hint here
       );
     } catch (err) {
+      // swallowing here would let the caller treat a failed move as success
+      // and corrupt prevSync bookkeeping, so log and rethrow
       console.error("some error while moving");
       console.error(err);
+      throw err;
     }
   }
 
@@ -731,8 +738,12 @@ export class FakeFsDropbox extends FakeFs {
         key // just a hint here
       );
     } catch (err) {
+      // a swallowed failure here makes sync.ts clear the prevSync record for
+      // a file that still exists remotely, so the next sync "resurrects" it;
+      // rethrow so the sync layer keeps prevSync and retries next time
       console.error("some error while deleting");
       console.error(err);
+      throw err;
     }
   }
 
