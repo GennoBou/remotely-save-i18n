@@ -1530,18 +1530,27 @@ export default class RemotelySavePlugin extends Plugin {
           });
       }
 
+      let authError: any = undefined;
       const rsp = await sendAuthReqOnedrive(
         this.settings.onedrive.clientID,
         this.settings.onedrive.authority,
         inputParams.code,
         this.oauth2Info.verifier!,
         async (e: any) => {
+          authError = e;
           console.error(e);
         }
       );
 
       if (rsp === undefined || (rsp as any).error !== undefined) {
-        throw Error(`${JSON.stringify(rsp)}`);
+        throw Error(
+          `OneDrive token exchange failed: ${
+            (rsp as any)?.error_description ??
+            (rsp as any)?.error ??
+            authError ??
+            "unknown error"
+          }`
+        );
       }
       await setConfigBySuccessfullAuthInplaceOnedrive(
         this.settings.onedrive,
