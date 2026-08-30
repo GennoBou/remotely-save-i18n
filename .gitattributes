@@ -1,1 +1,2 @@
 tests/static_assets/sometext.txt text eol=lf
+"tests/static_assets/sometext.txt text eol=lf" 
