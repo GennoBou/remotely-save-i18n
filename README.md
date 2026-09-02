@@ -1,38 +1,35 @@
-# Remotely Save (i18n)
+# Remotely Save (Fixed + Japanese)
 
 > [!NOTE]
-> **About this i18n Fork / 多言語版について**
+> **About this Fork (Fixed + Japanese) / 本フォーク版について**
 >
-> This repository is a fork of [The original plugin](https://github.com/remotely-save/remotely-save) that introduces internationalization (i18n) support and Japanese localization resources.
-> It is intended for personal and community use. To install this plugin in Obsidian, please use the **[Obsidian42 - BRAT](https://github.com/TfTHacker/obsidian42-brat)** plugin.
-> Once the upstream plugin officially supports internationalization and Japanese locales, this repository will be archived.
+> This repository is a maintained fork of [The original remotely-save plugin](https://github.com/remotely-save/remotely-save) with **Japanese localization** and **critical bug fixes / modernizations**:
+> - 🇯🇵 **Full Japanese Support**: Complete built-in Japanese UI translations (Basic & Pro). Automatically applies when Obsidian is set to Japanese.
+> - 🛡️ **Critical Bug Fixes**:
+>   - Fixed silent data loss & deleted file resurrection bugs (PR #1175, #1177).
+>   - Fixed OneDrive OAuth callback mis-routing, silent hangs, token lifecycle, and 400/404 errors (PR #1186, #1043).
+>   - Fixed Android S3 crashes (PR #1133) and nested directory path slashes (PR #1189).
+> - ⚡ **Modernized**: Upgraded to latest AWS SDK, Dropbox SDK, WebDAV, esbuild, and TypeScript 5.9+.
 >
-> **Installation via BRAT**:
+> **Installation via [BRAT](https://github.com/TfTHacker/obsidian42-brat)**:
 > 1. Enable the BRAT plugin in Obsidian.
 > 2. Run `BRAT: Plugins: Add a beta plugin for testing` from the Command Palette.
 > 3. Enter this repository URL: `https://github.com/GennoBou/remotely-save-i18n`
 >
-> **Custom Translations (localize.json)**:
-> - You can add custom translations or override text by editing `localize.json` in the plugin folder (`.obsidian/plugins/remotely-save-i18n/`).
-> - Set your target language code in `"language"` (e.g. `"en"`, `"ja"`, `"de"`), modify `"resource"`, and reload Obsidian.
-> - Deleting `localize.json` and reloading Obsidian will reset it to the default template.
->
->
 > ---
 >
-> 本リポジトリは、[オリジナルのプラグイン](https://github.com/remotely-save/remotely-save) を多言語化 (i18n) し、日本語リソースを追加したフォーク版です。
-> 個人利用・コミュニティ提供を目的としており、Obsidianへのインストールは **[Obsidian42 - BRAT](https://github.com/TfTHacker/obsidian42-brat)** プラグイン経由で行ってください。
-> 本家が多言語対応と日本語ロケールを公式実装したとき、本リポジトリの役目は終えアーカイブされます。
+> 本リポジトリは、[オリジナルの remotely-save](https://github.com/remotely-save/remotely-save) に **日本語翻訳** および **重要バグ修正・最新化** を施したメンテナンス版フォークです：
+> - 🇯🇵 **完全な日本語対応**: 通常版・PRO版の全UI（650キー以上）を標準内蔵。Obsidianが日本語設定であれば自動で適用されます。
+> - 🛡️ **重要バグ・データ保護の修正**:
+>   - ネットワークエラー時のサイレントデータ消失および削除ファイル復活バグの修正 (PR #1175, #1177)
+>   - OneDrive の OAuth 認証ハング、トークン失効、400/404 エラーの修正 (PR #1186, #1043)
+>   - Android での S3 クラッシュ修正 (PR #1133)、サブフォルダ指定の修正 (PR #1189)
+> - ⚡ **依存関係の最新化**: 最新の AWS SDK、Dropbox SDK、WebDAV、esbuild、TypeScript 5.9+ にアップデート済み。
 >
 > **BRATでのインストール手順**:
-> 1. Obsidianで BRAT プラグインを有効化
+> 1. Obsidian で **BRAT** プラグインを有効化
 > 2. コマンドパレットから `BRAT: Plugins: Add a beta plugin for testing` を実行
-> 3. 本リポジトリのURL (`https://github.com/GennoBou/remotely-save-i18n`) を入力
->
-> **独自翻訳の追加・カスタマイズ (localize.json)**:
-> - プラグインフォルダ内の `localize.json` を編集することで、独自翻訳の追加や上書きが可能です。
-> - `"language"` に使用したい言語コード（例: 英語=`"en"`, 日本語=`"ja"`, ドイツ語=`"de"` 等）を入力し、`"resource"` 以下を書き換えてアプリを再起動すると反映されます。
-> - `localize.json` を削除してアプリを再起動すると、初期状態に自動復元されます。
+> 3. 本リポジトリの URL (`https://github.com/GennoBou/remotely-save-i18n`) を入力
 
 English | [中文](./README.zh-cn.md)
 
