@@ -1,0 +1,270 @@
+name: Upstream Sync & Auto-Release
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Daily at 03:00 UTC (12:00 JST)
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force sync even if merge-base is identical'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-and-sync:
+    name: Check Upstream & Sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Git 設定
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # パッケージマネージャーの自動セットアップ
+      - name: Setup pnpm
+        if: hashFiles('pnpm-lock.yaml') != ''
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Bun
+        if: hashFiles('bun.lockb', 'bun.lock') != ''
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || (hashFiles('package-lock.json') != '' && 'npm' || (hashFiles('yarn.lock') != '' && 'yarn' || '')) }}
+
+      # 依存関係のインストール
+      - name: Install dependencies
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            pnpm install --frozen-lockfile || pnpm install
+          elif [ -f "yarn.lock" ]; then
+            yarn install --frozen-lockfile || yarn install
+          elif [ -f "bun.lockb" ] || [ -f "bun.lock" ]; then
+            bun install --frozen-lockfile || bun install
+          elif [ -f "package-lock.json" ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      # 1. upstream 更新検知
+      - name: Fetch upstream and detect changes
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPSTREAM_URL="${{ vars.UPSTREAM_REPO_URL }}"
+          if [ -z "$UPSTREAM_URL" ]; then
+            UPSTREAM_URL=$(node -e "try { const p = require('./package.json'); console.log(p.repository?.url || p.repository || ''); } catch(e) { console.log(''); }")
+          fi
+          if [ -z "$UPSTREAM_URL" ]; then
+            UPSTREAM_URL=$(gh repo view "$GITHUB_REPOSITORY" --json parent -q '.parent.url // .parent.clone_url' 2>/dev/null || echo "")
+            if [ -n "$UPSTREAM_URL" ]; then
+              echo "Auto-detected upstream URL from fork parent: $UPSTREAM_URL"
+              gh variable set UPSTREAM_REPO_URL --body "$UPSTREAM_URL" 2>/dev/null || true
+            fi
+          fi
+          if [ -z "$UPSTREAM_URL" ]; then
+            echo "Error: Upstream repository URL not configured." && exit 1
+          fi
+
+          # URLのプレフィックス git+ などを除去
+          UPSTREAM_URL=$(echo "$UPSTREAM_URL" | sed -e 's/^git+//')
+          echo "Using upstream URL: $UPSTREAM_URL"
+          git remote add upstream "$UPSTREAM_URL" || git remote set-url upstream "$UPSTREAM_URL"
+          git fetch upstream
+
+          UPSTREAM_BRANCH="master"
+          if git show-ref --verify --quiet refs/remotes/upstream/main; then
+            UPSTREAM_BRANCH="main"
+          fi
+          UPSTREAM_HEAD=$(git rev-parse "upstream/$UPSTREAM_BRANCH")
+          echo "upstream_head=$UPSTREAM_HEAD" >> $GITHUB_OUTPUT
+          echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
+
+          git checkout i18n-core
+          MERGE_BASE=$(git merge-base HEAD "$UPSTREAM_HEAD")
+
+          if [ "$UPSTREAM_HEAD" = "$MERGE_BASE" ] && [ "${{ inputs.force_sync }}" != "true" ]; then
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            echo "No new updates found in upstream/$UPSTREAM_BRANCH."
+          else
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "New updates detected in upstream/$UPSTREAM_BRANCH ($UPSTREAM_HEAD)."
+          fi
+
+      # 2. i18n-core へのマージ
+      - name: Merge upstream into i18n-core
+        if: steps.detect.outputs.has_updates == 'true'
+        id: merge_core
+        run: |
+          git checkout i18n-core
+          if git merge "upstream/${{ steps.detect.outputs.upstream_branch }}" -m "chore(upstream): merge latest upstream changes"; then
+            echo "merge_success=true" >> $GITHUB_OUTPUT
+            echo "Successfully merged upstream into i18n-core."
+          else
+            echo "merge_success=false" >> $GITHUB_OUTPUT
+            echo "Merge conflict detected in i18n-core!"
+            git merge --abort || true
+          fi
+
+      # 2-A. コンフリクト発生時の Issue 作成 (Google Jules / AI連携用)
+      - name: Handle merge conflict in i18n-core
+        if: steps.detect.outputs.has_updates == 'true' && steps.merge_core.outputs.merge_success != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dateStr = new Date().toISOString().split('T')[0];
+            const title = `⚠️ [Jules Sync] Upstream Conflict in i18n-core (${dateStr})`;
+            const body = [
+              '## 🤖 Google Jules タスク指示書 (Conflict Resolution)',
+              `\`i18n-core\` ブランチで upstream (\`${{ steps.detect.outputs.upstream_branch }}\`) のマージ時に競合が発生しました。`,
+              '',
+              '### 📋 実行手順',
+              '1. `i18n-core` をベースに作業ブランチを作成し、競合を解決してください。',
+              '2. 新規追加された UI 文字列がある場合は `t("...")` でラップし、`src/locales/en.json` に追加してください。',
+              '3. 既存のファイル（`.github/workflows/`, `manifest.json` 等）を削除・初期化してはなりません。',
+              '4. `i18n-core` に対する Pull Request を作成してください。',
+              '',
+              `- **Upstream Commit**: \`${{ steps.detect.outputs.upstream_head }}\``
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['upstream-sync', 'conflict', 'jules-task']
+            });
+
+      # 3. 多言語化辞書・プレースホルダー検証（新規キーの検出）
+      - name: Validate i18n dictionary
+        if: steps.detect.outputs.has_updates == 'true' && steps.merge_core.outputs.merge_success == 'true'
+        id: validate_i18n
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['check-i18n'] ? 0 : 1)"; then
+            if npm run check-i18n; then
+              echo "i18n_valid=true" >> $GITHUB_OUTPUT
+            else
+              echo "i18n_valid=false" >> $GITHUB_OUTPUT
+              echo "Missing translation keys or placeholder mismatch detected!"
+            fi
+          elif [ -f "scripts/check-i18n.mjs" ]; then
+            if node scripts/check-i18n.mjs; then
+              echo "i18n_valid=true" >> $GITHUB_OUTPUT
+            else
+              echo "i18n_valid=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "i18n_valid=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 3-A. 新規翻訳キー検出時の Issue 作成 (Google Jules / AI連携用)
+      - name: Handle untranslated keys
+        if: steps.detect.outputs.has_updates == 'true' && steps.merge_core.outputs.merge_success == 'true' && steps.validate_i18n.outputs.i18n_valid != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dateStr = new Date().toISOString().split('T')[0];
+            const title = `🌐 [Jules Sync] New Untranslated Keys Detected (${dateStr})`;
+            const body = [
+              '## 🤖 Google Jules タスク指示書 (Japanese Translation)',
+              'upstream の最新更新を取り込んだ結果、新規UI文字列が追加されました。`src/locales/ja.json` に日本語訳を追加してください。',
+              '',
+              '### 📋 実行手順',
+              '1. `node scripts/check-i18n.mjs`（または `npm run check-i18n`）を実行し、未翻訳キー一覧を確認してください。',
+              '2. [Obsidian公式用語集](https://raw.githubusercontent.com/GennoBou/obsidian-i18n-ops/main/glossary/obsidian-ja.json) を参照し、`src/locales/ja.json` に日本語訳を追加してください。',
+              '   - プレースホルダー（`{name}`, `{count}` 等）は原文と完全一致させてください。',
+              '   - 自然な日本語（「です・ます」調）で記述してください。',
+              '3. `node scripts/check-i18n.mjs` を再実行し、エラー 0 件を確認してください。',
+              '4. `src/locales/ja.json` の変更のみを含む Pull Request を作成してください。',
+              '   - ※ `.github/` や `manifest.json` などのファイルを削除・初期化してはなりません。',
+              '',
+              `- **Upstream Commit**: \`${{ steps.detect.outputs.upstream_head }}\``
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['upstream-sync', 'translation-needed', 'jules-task']
+            });
+
+      # 4. l10n-ja および master への自動マージ & CalVer リリース (コンフリクト・未翻訳なし時)
+      - name: Merge to l10n-ja, master and Auto-Release
+        if: steps.detect.outputs.has_updates == 'true' && steps.merge_core.outputs.merge_success == 'true' && steps.validate_i18n.outputs.i18n_valid == 'true'
+        run: |
+          git checkout i18n-core
+          git push origin i18n-core
+
+          git checkout l10n-ja
+          git merge i18n-core -m "chore(sync): merge i18n-core into l10n-ja"
+          git push origin l10n-ja
+
+          DEFAULT_BRANCH="master"
+          if git show-ref --verify --quiet refs/heads/main; then
+            DEFAULT_BRANCH="main"
+          fi
+          git checkout "$DEFAULT_BRANCH"
+          git merge l10n-ja -m "chore(sync): sync l10n-ja into $DEFAULT_BRANCH"
+
+          BASE_VERSION=$(node -e "const d = new Date(); console.log(\`\${String(d.getFullYear()).slice(-2)}.\${d.getMonth() + 1}.\${d.getDate()}\`);")
+          TARGET_VERSION="$BASE_VERSION"
+          
+          if git rev-parse "$TARGET_VERSION" >/dev/null 2>&1; then
+            REV=1
+            while git rev-parse "${BASE_VERSION}.${REV}" >/dev/null 2>&1; do
+              REV=$((REV + 1))
+            done
+            TARGET_VERSION="${BASE_VERSION}.${REV}"
+          fi
+          echo "Calculated CalVer version: $TARGET_VERSION"
+
+          node -e "
+            const fs = require('fs');
+            const targetVer = '$TARGET_VERSION';
+            if (fs.existsSync('manifest.json')) {
+              const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+              m.version = targetVer;
+              fs.writeFileSync('manifest.json', JSON.stringify(m, null, '\t') + '\n');
+            }
+            if (fs.existsSync('package.json')) {
+              const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              p.version = targetVer;
+              fs.writeFileSync('package.json', JSON.stringify(p, null, '\t') + '\n');
+            }
+          "
+
+          if node -e "process.exit(require('./package.json').scripts?.check ? 0 : 1)"; then
+            npm run check
+          fi
+          if node -e "process.exit(require('./package.json').scripts?.['build-with-lint'] ? 0 : 1)"; then
+            npm run build-with-lint
+          elif node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            npm run build
+          fi
+
+          git add manifest.json package.json
+          git commit -m "chore(release): bump version to $TARGET_VERSION [skip ci]"
+          git push origin "$DEFAULT_BRANCH"
+
+          git tag "$TARGET_VERSION"
+          git push origin "$TARGET_VERSION"
+          echo "Successfully pushed tag $TARGET_VERSION to trigger BRAT release."

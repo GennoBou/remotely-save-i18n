@@ -1,0 +1,98 @@
+name: Release for BRAT
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+      - '*.*.*.*'
+      - '[0-9]*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release (e.g. 26.8.26 or 26.8.26.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # パッケージマネージャーの自動セットアップ
+      - name: Setup pnpm
+        if: hashFiles('pnpm-lock.yaml') != ''
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Bun
+        if: hashFiles('bun.lockb', 'bun.lock') != ''
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || (hashFiles('package-lock.json') != '' && 'npm' || (hashFiles('yarn.lock') != '' && 'yarn' || '')) }}
+
+      # 依存関係のインストール
+      - name: Install dependencies
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            pnpm install --frozen-lockfile || pnpm install
+          elif [ -f "yarn.lock" ]; then
+            yarn install --frozen-lockfile || yarn install
+          elif [ -f "bun.lockb" ] || [ -f "bun.lock" ]; then
+            bun install --frozen-lockfile || bun install
+          elif [ -f "package-lock.json" ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      # 多言語化辞書・プレースホルダー検証
+      - name: Validate i18n
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['check-i18n'] ? 0 : 1)"; then
+            echo "::group::Running check-i18n"
+            npm run check-i18n
+            echo "::endgroup::"
+          elif [ -f "scripts/check-i18n.mjs" ]; then
+            echo "::group::Running scripts/check-i18n.mjs directly"
+            node scripts/check-i18n.mjs
+            echo "::endgroup::"
+          fi
+
+      # プラグインのビルド
+      - name: Build plugin
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['build-with-lint'] ? 0 : 1)"; then
+            npm run build-with-lint
+          elif node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            npm run build
+          else
+            echo "Error: No build script found in package.json" && exit 1
+          fi
+
+      # BRAT配布用 GitHub Release 発行（styles.css は存在しないプラグインもあるため fail_on_unmatched_files: false）
+      # ※ localize.json はユーザーがカスタマイズした設定を上書きしないよう、リリースアセットには含めず初回起動時にローカル自己生成させます
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            main.js
+            manifest.json
+            styles.css

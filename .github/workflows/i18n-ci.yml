@@ -1,0 +1,112 @@
+name: i18n CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - i18n-core
+      - 'l10n-*'
+  pull_request:
+    branches:
+      - master
+      - main
+      - i18n-core
+      - 'l10n-*'
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run unit tests (disabled by default for speed)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: i18n-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-build:
+    name: Validate & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # パッケージマネージャーの自動セットアップ
+      - name: Setup pnpm
+        if: hashFiles('pnpm-lock.yaml') != ''
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Bun
+        if: hashFiles('bun.lockb', 'bun.lock') != ''
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || (hashFiles('package-lock.json') != '' && 'npm' || (hashFiles('yarn.lock') != '' && 'yarn' || '')) }}
+
+      # 依存関係のインストール
+      - name: Install dependencies
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            pnpm install --frozen-lockfile || pnpm install
+          elif [ -f "yarn.lock" ]; then
+            yarn install --frozen-lockfile || yarn install
+          elif [ -f "bun.lockb" ] || [ -f "bun.lock" ]; then
+            bun install --frozen-lockfile || bun install
+          elif [ -f "package-lock.json" ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      # 多言語化辞書・プレースホルダーの決定論的整合性チェック
+      - name: Run i18n validator
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['check-i18n'] ? 0 : 1)"; then
+            echo "::group::Running check-i18n"
+            npm run check-i18n
+            echo "::endgroup::"
+          elif [ -f "scripts/check-i18n.mjs" ]; then
+            echo "::group::Running scripts/check-i18n.mjs directly"
+            node scripts/check-i18n.mjs
+            echo "::endgroup::"
+          else
+            echo "No i18n validator found; skipping."
+          fi
+
+      # 静的型チェック・構文チェック（存在する場合のみ実行）
+      - name: Run type checks
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.check ? 0 : 1)"; then
+            echo "::group::Running check"
+            npm run check
+            echo "::endgroup::"
+          fi
+
+      # プラグインのビルド
+      - name: Build plugin
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['build-with-lint'] ? 0 : 1)"; then
+            npm run build-with-lint
+          elif node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            npm run build
+          else
+            echo "Error: No build script found in package.json" && exit 1
+          fi
+
+      # 単体テスト（手動実行時かつ明示的に有効化された場合のみ実行）
+      - name: Run tests (Optional)
+        if: ${{ inputs.run_tests == true }}
+        run: |
+          if npm run | grep -q "test"; then
+            echo "::group::Running tests"
+            npm run test
+            echo "::endgroup::"
+          fi

@@ -1,8 +1,9 @@
 {
-  "name": "remotely-save",
-  "version": "0.5.25",
-  "description": "This is yet another sync plugin for Obsidian app.",
+  "name": "remotely-save-i18n",
+  "version": "26.9.2",
+  "description": "This is yet another sync plugin for Obsidian app (with i18n support + Japanese).",
   "scripts": {
+    "check-i18n": "node scripts/check-i18n.mjs",
     "dev2": "node esbuild.config.mjs --watch",
     "build2": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "build": "webpack --mode production",
