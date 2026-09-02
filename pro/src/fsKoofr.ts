@@ -392,8 +392,8 @@ export class FakeFsKoofr extends FakeFs {
         parseAs: "text",
       }
     );
-    if (error !== undefined) {
-      throw Error(JSON.stringify(error));
+    if (error !== undefined || data === undefined) {
+      throw Error(JSON.stringify(error || "No data returned"));
     }
     const items = JSON.parse(
       `[${data.trim().split("\n").join(",")}]`
@@ -414,10 +414,10 @@ export class FakeFsKoofr extends FakeFs {
         },
       }
     );
-    if (error !== undefined) {
-      throw Error(JSON.stringify(error));
+    if (error !== undefined || data === undefined) {
+      throw Error(JSON.stringify(error || "No data returned"));
     }
-    const entities = data.files.map((x) => fromFileToEntity(x, ""));
+    const entities = (data.files || []).map((x) => fromFileToEntity(x, ""));
     // console.debug(entities);
     return entities;
   }
@@ -433,8 +433,8 @@ export class FakeFsKoofr extends FakeFs {
         },
       }
     );
-    if (error !== undefined) {
-      throw Error(JSON.stringify(error));
+    if (error !== undefined || data === undefined) {
+      throw Error(JSON.stringify(error || "No data returned"));
     }
     const entity = fromFileToEntity(
       data,
@@ -501,8 +501,8 @@ export class FakeFsKoofr extends FakeFs {
         },
       }
     );
-    if (error !== undefined) {
-      throw Error(JSON.stringify(error));
+    if (error !== undefined || data === undefined) {
+      throw Error(JSON.stringify(error || "No data returned"));
     }
     const entity = fromFileToEntity(
       data,
@@ -524,8 +524,8 @@ export class FakeFsKoofr extends FakeFs {
         parseAs: "arrayBuffer",
       }
     );
-    if (error !== undefined) {
-      throw Error(JSON.stringify(error));
+    if (error !== undefined || data === undefined) {
+      throw Error(JSON.stringify(error || "No data returned"));
     }
     return data;
   }
