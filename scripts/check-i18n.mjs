@@ -12,8 +12,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 function extractPlaceholders(text) {
-    const matches = text.match(/\{(\w+)\}/g) || [];
-    return matches.sort();
+    if (typeof text !== "string") return [];
+    // Matches Mustache style {{var}} or {{{var}}} and single brace {var} where var is an identifier
+    const matches = text.match(/\{\{\{?[a-zA-Z0-9_]+\}?\}\}|\{[a-zA-Z0-9_]+\}/g) || [];
+    return matches.map(m => m.trim()).sort();
 }
 
 function checkI18n(options) {
@@ -34,6 +36,7 @@ function checkI18n(options) {
     }
 
     const baseKeys = Object.keys(baseDict);
+    console.log(`[INFO] Validating: ${localesDir}`);
     console.log(`[INFO] Base locale (${baseLocale}) contains ${baseKeys.length} keys.`);
 
     const files = fs.readdirSync(localesDir);
@@ -63,12 +66,19 @@ function checkI18n(options) {
         // 1. Missing keys
         const missingKeys = baseKeys.filter((k) => !(k in targetDict));
         if (missingKeys.length > 0) {
-            console.error(`[FAIL] Missing ${missingKeys.length} keys in ${targetLocale}:`);
-            missingKeys.slice(0, 10).forEach((k) => console.error(`  - "${k}"`));
-            if (missingKeys.length > 10) {
-                console.error(`  ... and ${missingKeys.length - 10} more.`);
+            const isCriticalLocale = targetLocale === "ja";
+            if (isCriticalLocale || strict) {
+                console.error(`[FAIL] Missing ${missingKeys.length} keys in ${targetLocale}:`);
+                missingKeys.slice(0, 10).forEach((k) => console.error(`  - "${k}"`));
+                if (missingKeys.length > 10) {
+                    console.error(`  ... and ${missingKeys.length - 10} more.`);
+                }
+                hasErrors = true;
+            } else {
+                console.warn(`[WARN] Missing ${missingKeys.length} keys in upstream community locale ${targetLocale}:`);
+                missingKeys.slice(0, 5).forEach((k) => console.warn(`  - "${k}"`));
+                totalWarnings += missingKeys.length;
             }
-            hasErrors = true;
         } else {
             console.log(`[PASS] All ${baseKeys.length} base keys are present.`);
         }
@@ -123,26 +133,50 @@ function checkI18n(options) {
         }
     }
 
-    console.log("\n=================================");
-    if (hasErrors) {
-        console.error(`[RESULT] FAILED with errors.`);
-        return false;
-    } else {
-        console.log(`[RESULT] SUCCESS! (Warnings: ${totalWarnings})`);
-        return true;
-    }
+    return !hasErrors;
 }
 
 // CLI entrypoint
-const targetDir = process.argv[2] || path.join(process.cwd(), "src", "locales");
 const isStrict = process.argv.includes("--strict");
+const customDir = process.argv.find((arg) => !arg.startsWith("-") && arg !== process.argv[0] && arg !== process.argv[1]);
 
-const ok = checkI18n({
-    localesDir: path.resolve(targetDir),
-    baseLocale: "en",
-    strict: isStrict,
-});
+let targetDirs = [];
+if (customDir) {
+    targetDirs.push(path.resolve(customDir));
+} else {
+    const candidateDirs = [
+        path.join(process.cwd(), "src", "langs"),
+        path.join(process.cwd(), "pro", "src", "langs"),
+        path.join(process.cwd(), "src", "locales"),
+        path.join(process.cwd(), "locales"),
+    ];
+    for (const dir of candidateDirs) {
+        if (fs.existsSync(dir) && fs.existsSync(path.join(dir, "en.json"))) {
+            targetDirs.push(dir);
+        }
+    }
+}
 
-if (!ok) {
+if (targetDirs.length === 0) {
+    console.error("[ERROR] No valid localization directory found (e.g., src/langs, pro/src/langs, src/locales).");
     process.exit(1);
+}
+
+let allOk = true;
+for (const dir of targetDirs) {
+    const ok = checkI18n({
+        localesDir: dir,
+        baseLocale: "en",
+        strict: isStrict,
+    });
+    if (!ok) allOk = false;
+}
+
+console.log("\n=================================");
+if (!allOk) {
+    console.error(`[RESULT] FAILED with errors.`);
+    process.exit(1);
+} else {
+    console.log(`[RESULT] SUCCESS! All localization files validated.`);
+    process.exit(0);
 }

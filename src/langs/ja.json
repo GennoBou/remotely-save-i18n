@@ -36,6 +36,7 @@
   "protocol_onedrive_connect_succ_revoke": "ユーザー {{username}} として接続されています。接続を解除したい場合は、このボタンをクリックしてください。",
   "protocol_onedrive_connect_fail": "OneDrive からのレスポンスでエラーが発生しました。認証を拒否した可能性があります。",
   "protocol_onedrive_connect_unknown": "コールバックの処理方法が不明です: {{params}}",
+  "protocol_onedrive_no_pending_auth": "OneDrive サインインのコールバックを受信しましたが、この保管庫 ({{vaultName}}) では OneDrive サインインの待機状態ではありません。他の開いている保管庫へ転送します。何も起こらない場合は、[認証] をクリックした保管庫ウィンドウに切り替えてフォーカスを維持し、再度お試しください。",
   "command_startsync": "同期を開始",
   "command_drynrun": "同期を開始（ドライランのみ）",
   "command_exportsyncplans_1_only_change": "同期計画をエクスポート（最新1件・変更分のみ）",
