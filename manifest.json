@@ -1,10 +1,10 @@
 {
   "id": "remotely-save-i18n",
-  "name": "Remotely Save (Fixed + Japanese)",
-  "version": "26.9.2",
+  "name": "Remotely Save (Fixed)",
+  "version": "26.9.3",
   "minAppVersion": "0.13.21",
   "description": "Yet another unofficial plugin allowing users to synchronize notes between local device and the cloud service (Fixed).",
-  "author": "fyears",
+  "author": "fyears (fixed by GennoBou)",
   "authorUrl": "https://github.com/fyears",
   "isDesktopOnly": false,
   "fundingUrl": "https://remotelysave.com"
