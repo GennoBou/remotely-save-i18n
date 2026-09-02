@@ -88,9 +88,9 @@ export const mkdirpInVault = async (thePath: string, vault: Vault) => {
  * @returns ArrayBuffer
  */
 export const bufferToArrayBuffer = (
-  b: Buffer | Uint8Array | ArrayBufferView
+  b: Buffer | Uint8Array<ArrayBuffer> | ArrayBufferView
 ) => {
-  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 };
 
 /**
@@ -338,7 +338,7 @@ export const atWhichLevel = (x: string | undefined) => {
 };
 
 export const checkHasSpecialCharForDir = (x: string) => {
-  return /[?/\\]/.test(x);
+  return /[?\\\\]/.test(x);
 };
 
 export const unixTimeToStr = (x: number | undefined | null, hasMs = false) => {
@@ -450,7 +450,7 @@ export const isSpecialFolderNameToSkip = (
     ".svn",
     "node_modules",
     ".DS_Store",
-    "__MACOSX ",
+    "__MACOSX",
     "Icon\r", // https://superuser.com/questions/298785/icon-file-on-os-x-desktop
     "desktop.ini",
     "Desktop.ini",

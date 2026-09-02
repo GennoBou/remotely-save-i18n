@@ -55,9 +55,18 @@ esbuild
       // ...builtins
     ],
     inject: ["./esbuild.injecthelper.mjs"],
+    alias: {
+      "node:url": "url",
+      "node:path": "path-browserify",
+      "node:stream": "stream-browserify",
+      "node:crypto": "crypto-browserify",
+      "node:buffer": "buffer",
+      "node:process": "process/browser",
+      "node:util": "util",
+    },
     format: "cjs",
     // watch: !prod, // no longer valid in esbuild 0.17
-    target: "es2016",
+    target: "es2020",
     logLevel: "info",
     sourcemap: prod ? false : "inline",
     treeShaking: true,

@@ -183,29 +183,37 @@ async function retryReq<T>(
       return await reqFunc();
     } catch (e: unknown) {
       const err = e as DropboxResponseError<ErrSubType>;
-      if (err.status === undefined) {
+      // fetch throws a bare TypeError ("Failed to fetch", no .status) when the
+      // connection dies; under concurrent writes Dropbox sometimes resets
+      // connections instead of answering 429/409, so treat it as transient too
+      const isNetworkErr = err.status === undefined && e instanceof TypeError;
+      if (err.status === undefined && !isNetworkErr) {
         // then the err is not DropboxResponseError
         throw err;
       }
-      if (err.status !== 429) {
-        // then the err is not "too many requests", give up
+      // 429 is "too many requests"; 409 with too_many_write_operations is
+      // namespace write contention, which is equally transient and retryable
+      const isWriteContention =
+        err.status === 409 &&
+        JSON.stringify(err.error ?? "").includes("too_many_write_operations");
+      if (!isNetworkErr && err.status !== 429 && !isWriteContention) {
         throw err;
       }
 
       if (idx === waitSeconds.length - 1) {
         // the last retry also failed, give up
         throw new Error(
-          `${
-            extraHint === "" ? "" : extraHint + ": "
-          }"429 too many requests", after retrying for ${
+          `${extraHint === "" ? "" : extraHint + ": "}"${
+            isNetworkErr ? "network failure" : err.status
+          } too many requests / write operations", after retrying for ${
             idx + 1
           } times still failed.`
         );
       }
 
-      const headers = headersToRecord(err.headers);
+      const headers = isNetworkErr ? {} : headersToRecord(err.headers);
       const svrSec =
-        err.error.error.retry_after ||
+        err?.error?.error?.retry_after ||
         Number.parseInt(headers["retry-after"] || "1") ||
         1;
       const fallbackSec = waitSeconds[idx];
@@ -730,9 +738,23 @@ export class FakeFsDropbox extends FakeFs {
           }),
         key // just a hint here
       );
-    } catch (err) {
+    } catch (err: any) {
+      // An already-absent remote file is fine: delete is idempotent.
+      // But EVERY other failure (network / 429-exhausted / permission) MUST
+      // propagate. Otherwise the caller treats the delete as successful and
+      // clears the prevSync record, so the still-present remote file is seen
+      // as "new" and re-downloaded on the next sync (deleted file resurrected).
+      const summary: string =
+        (err?.error?.error_summary as string) ?? `${err?.message ?? ""}`;
+      if (summary.includes("not_found")) {
+        console.warn(
+          `rm: remote ${remoteFileName} already absent, treating as deleted`
+        );
+        return;
+      }
       console.error("some error while deleting");
       console.error(err);
+      throw err;
     }
   }
 
