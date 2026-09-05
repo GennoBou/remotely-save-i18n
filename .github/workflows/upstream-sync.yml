@@ -74,7 +74,7 @@ jobs:
             UPSTREAM_URL=$(node -e "try { const p = require('./package.json'); console.log(p.repository?.url || p.repository || ''); } catch(e) { console.log(''); }")
           fi
           if [ -z "$UPSTREAM_URL" ]; then
-            UPSTREAM_URL=$(gh repo view "$GITHUB_REPOSITORY" --json parent -q '.parent.url // .parent.clone_url' 2>/dev/null || echo "")
+            UPSTREAM_URL=$(gh repo view "$GITHUB_REPOSITORY" --json parent -q 'if .parent then ("https://github.com/" + .parent.owner.login + "/" + .parent.name + ".git") else empty end' 2>/dev/null || echo "")
             if [ -n "$UPSTREAM_URL" ]; then
               echo "Auto-detected upstream URL from fork parent: $UPSTREAM_URL"
               gh variable set UPSTREAM_REPO_URL --body "$UPSTREAM_URL" 2>/dev/null || true
