@@ -145,13 +145,17 @@ jobs:
               `- **Upstream Commit**: \`${{ steps.detect.outputs.upstream_head }}\``
             ].join('\n');
 
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: title,
-              body: body,
-              labels: ['upstream-sync', 'conflict', 'jules-task']
-            });
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['upstream-sync', 'conflict', 'jules-task']
+              });
+            } catch (err) {
+              console.warn('Failed to create conflict issue (issues may be disabled):', err.message);
+            }
 
       # 3. 多言語化辞書・プレースホルダー検証（新規キーの検出）
       - name: Validate i18n dictionary
@@ -199,13 +203,17 @@ jobs:
               `- **Upstream Commit**: \`${{ steps.detect.outputs.upstream_head }}\``
             ].join('\n');
 
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: title,
-              body: body,
-              labels: ['upstream-sync', 'translation-needed', 'jules-task']
-            });
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['upstream-sync', 'translation-needed', 'jules-task']
+              });
+            } catch (err) {
+              console.warn('Failed to create untranslated keys issue (issues may be disabled):', err.message);
+            }
 
       # 4. l10n-ja および master への自動マージ & CalVer リリース (コンフリクト・未翻訳なし時)
       - name: Merge to l10n-ja, master and Auto-Release
