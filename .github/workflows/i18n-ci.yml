@@ -34,21 +34,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # パッケージマネージャーの自動セットアップ
       - name: Setup pnpm
         if: hashFiles('pnpm-lock.yaml') != ''
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Bun
         if: hashFiles('bun.lockb', 'bun.lock') != ''
         uses: oven-sh/setup-bun@v2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || (hashFiles('package-lock.json') != '' && 'npm' || (hashFiles('yarn.lock') != '' && 'yarn' || '')) }}
 
       # 依存関係のインストール
@@ -61,9 +61,9 @@ jobs:
           elif [ -f "bun.lockb" ] || [ -f "bun.lock" ]; then
             bun install --frozen-lockfile || bun install
           elif [ -f "package-lock.json" ]; then
-            npm ci || npm install --legacy-peer-deps || npm install
+            npm ci || npm install
           else
-            npm install --legacy-peer-deps || npm install
+            npm install
           fi
 
       # 多言語化辞書・プレースホルダーの決定論的整合性チェック
