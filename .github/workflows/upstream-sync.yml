@@ -115,15 +115,27 @@ jobs:
         id: merge_core
         run: |
           git checkout i18n-core
-          if git merge "upstream/${{ steps.detect.outputs.upstream_branch }}" -m "chore(upstream): merge latest upstream changes"; then
+          if git merge --no-commit "upstream/${{ steps.detect.outputs.upstream_branch }}"; then
+            # フォーク側のワークフロー定義を保護（本家ワークフロー更新によるGITHUB_TOKEN権限エラーを防止）
+            git checkout HEAD -- .github/workflows 2>/dev/null || true
+            git commit -m "chore(upstream): merge latest upstream changes" || true
             echo "merge_success=true" >> $GITHUB_OUTPUT
             echo "Successfully merged upstream into i18n-core."
           else
-            echo "merge_success=false" >> $GITHUB_OUTPUT
-            echo "Merge conflict detected in i18n-core!"
-            CONFLICT_FILES=$(git diff --name-only --diff-filter=U | tr '\n' ',' | sed 's/,$//')
-            echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
-            git merge --abort || true
+            # .github/workflows のみの競合であれば保護して解消
+            git checkout HEAD -- .github/workflows 2>/dev/null || true
+            REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
+            if [ -z "$REMAINING_CONFLICTS" ]; then
+              git commit -m "chore(upstream): merge latest upstream changes" || true
+              echo "merge_success=true" >> $GITHUB_OUTPUT
+              echo "Successfully merged upstream into i18n-core."
+            else
+              echo "merge_success=false" >> $GITHUB_OUTPUT
+              echo "Merge conflict detected in i18n-core!"
+              CONFLICT_FILES=$(echo "$REMAINING_CONFLICTS" | tr '\n' ',' | sed 's/,$//')
+              echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
+              git merge --abort || true
+            fi
           fi
 
       # 2-A. コンフリクト発生時の Issue 作成 (Antigravity / AI連携用)
